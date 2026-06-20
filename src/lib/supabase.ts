@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 // Read from build environment variables or fall back to user's Supabase URL
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || "https://eehwpusvawqcuffpeujl.supabase.co";
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_nGc_CE4_rX8EFj0axduIDA_44uKpVNc";
 
 if (!supabaseUrl) {
   console.warn("VITE_SUPABASE_URL is not configured.");
