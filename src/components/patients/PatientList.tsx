@@ -1,7 +1,6 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { collection, query, orderBy, onSnapshot, limit, doc, deleteDoc } from 'firebase/firestore';
+import { supabase, handleSupabaseError, OperationType } from '../../lib/supabase';
 import { Patient } from '../../types';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -22,30 +21,64 @@ export default function PatientList({ onSelectPatient }: { onSelectPatient?: (p:
   const [isPurging, setIsPurging] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'patients'), orderBy('createdAt', 'desc'), limit(100));
-    const unsubscribe = onSnapshot(q, 
-      (snapshot) => {
-        const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Patient));
-        setPatients(list);
-        setLoading(false);
-      },
-      (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'patients');
-        setLoading(false);
+    let active = true;
+
+    async function fetchPatients() {
+      try {
+        const { data, error } = await supabase
+          .from('patients')
+          .select('*')
+          .order('createdAt', { ascending: false })
+          .limit(100);
+
+        if (error) throw error;
+        if (active) {
+          // Normalize the timestamp or handle it
+          const formattedPatients = (data || []).map(p => ({
+            ...p,
+            createdAt: p.createdAt ? new Date(p.createdAt).getTime() : Date.now(),
+            lastExamDate: p.lastExamDate ? new Date(p.lastExamDate).getTime() : null,
+          }));
+          setPatients(formattedPatients as Patient[]);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (active) {
+          handleSupabaseError(err, OperationType.LIST, 'patients');
+          setLoading(false);
+        }
       }
-    );
-    return () => unsubscribe();
+    }
+
+    fetchPatients();
+
+    const channel = supabase
+      .channel('patients-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+        fetchPatients();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handlePurge = async () => {
     if (!deletingId) return;
     setIsPurging(true);
     try {
-      await deleteDoc(doc(db, 'patients', deletingId));
+      const { error } = await supabase
+        .from('patients')
+        .delete()
+        .eq('id', deletingId);
+
+      if (error) throw error;
       toast.success('Patient record purge completed');
       setDeletingId(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `patients/${deletingId}`);
+      handleSupabaseError(err, OperationType.DELETE, `patients/${deletingId}`);
     } finally {
       setIsPurging(false);
     }

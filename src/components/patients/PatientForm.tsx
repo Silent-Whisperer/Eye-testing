@@ -2,9 +2,7 @@ import { useState, useRef, ChangeEvent, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { db, storage, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { supabase, handleSupabaseError, OperationType } from '../../lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -113,11 +111,19 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
   const uploadFiles = async (files: File[], side: 'right' | 'left', patientId: string) => {
     const urls = [];
     for (const file of files) {
-      const storageRef = ref(storage, `reports/${patientId}/${side}_${Date.now()}_${file.name}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const url = await getDownloadURL(snapshot.ref);
+      const filePath = `reports/${patientId}/${side}_${Date.now()}_${file.name}`;
+      const { data, error } = await supabase.storage
+        .from('reports')
+        .upload(filePath, file);
+
+      if (error) throw error;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('reports')
+        .getPublicUrl(filePath);
+
       urls.push({
-        url,
+        url: publicUrl,
         name: file.name,
         type: file.type,
         size: file.size,
@@ -136,25 +142,35 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
 
       if (initialData) {
         try {
-          const docRef = doc(db, 'patients', initialData.id);
-          await updateDoc(docRef, {
-            ...data,
-            lastExamDate: hasFiles ? Date.now() : initialData.lastExamDate,
-          });
+          const { error } = await supabase
+            .from('patients')
+            .update({
+              ...data,
+              lastExamDate: hasFiles ? new Date().toISOString() : (initialData.lastExamDate ? new Date(initialData.lastExamDate).toISOString() : null),
+            })
+            .eq('id', initialData.id);
+
+          if (error) throw error;
         } catch (err) {
-          handleFirestoreError(err, OperationType.UPDATE, `patients/${initialData.id}`);
+          handleSupabaseError(err, OperationType.UPDATE, `patients/${initialData.id}`);
           return;
         }
       } else {
         try {
-          const patientRef = await addDoc(collection(db, 'patients'), {
-            ...data,
-            createdAt: Date.now(),
-            lastExamDate: hasFiles ? Date.now() : null,
-          });
-          patientId = patientRef.id;
+          const { data: newPatient, error } = await supabase
+            .from('patients')
+            .insert({
+              ...data,
+              createdAt: new Date().toISOString(),
+              lastExamDate: hasFiles ? new Date().toISOString() : null,
+            })
+            .select('id')
+            .single();
+
+          if (error) throw error;
+          patientId = newPatient.id;
         } catch (err) {
-          handleFirestoreError(err, OperationType.CREATE, 'patients');
+          handleSupabaseError(err, OperationType.CREATE, 'patients');
           return;
         }
       }
@@ -196,21 +212,28 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
         const { data: extractedData } = await analysisResponse.json();
 
         setStatusMessage('Storing report ledger and building clinical PDF...');
-        const reportRef = await addDoc(collection(db, 'reports'), {
-          patientId: patientId,
-          testType,
-          examDate: Date.now(),
-          rightEyeFiles: rightUrls,
-          leftEyeFiles: leftUrls,
-          extractedData,
-          whatsappStatus: 'pending',
-          createdAt: Date.now()
-        });
+        const { data: newReport, error: reportErr } = await supabase
+          .from('reports')
+          .insert({
+            patientId: patientId,
+            testType,
+            examDate: new Date().toISOString(),
+            rightEyeFiles: rightUrls,
+            leftEyeFiles: leftUrls,
+            extractedData,
+            whatsappStatus: 'pending',
+            createdAt: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (reportErr) throw reportErr;
+        const reportId = newReport.id;
 
         const pdfResponse = await fetch('/api/generate-pdf', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ report: { id: reportRef.id, extractedData }, patient: { ...data, id: patientId } })
+          body: JSON.stringify({ report: { id: reportId, extractedData }, patient: { ...data, id: patientId } })
         });
         
         const pdfData = await pdfResponse.json();
@@ -218,11 +241,28 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
 
         setStatusMessage('Archiving generated report PDF...');
         const pdfBlob = await (await fetch(`data:application/pdf;base64,${pdfBase64}`)).blob();
-        const pdfRef = ref(storage, `reports/${patientId}/${reportRef.id}.pdf`);
-        await uploadBytes(pdfRef, pdfBlob);
-        pdfUrl = await getDownloadURL(pdfRef);
+        const pdfPath = `reports/${patientId}/${reportId}.pdf`;
+        const { error: pdfUploadErr } = await supabase.storage
+          .from('reports')
+          .upload(pdfPath, pdfBlob, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
 
-        await updateDoc(reportRef, { pdfUrl });
+        if (pdfUploadErr) throw pdfUploadErr;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('reports')
+          .getPublicUrl(pdfPath);
+
+        pdfUrl = publicUrl;
+
+        const { error: reportUpdateErr } = await supabase
+          .from('reports')
+          .update({ pdfUrl })
+          .eq('id', reportId);
+
+        if (reportUpdateErr) throw reportUpdateErr;
       }
 
       toast.success(initialData ? 'Patient record updated' : 'Patient registry stabilized');

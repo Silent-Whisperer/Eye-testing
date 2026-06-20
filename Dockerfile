@@ -24,8 +24,8 @@ COPY --from=builder /app/package*.json ./
 RUN npm ci --only=production
 
 # Expose port and start server
-EXPOSE 3000
-ENV PORT=3000
+EXPOSE 8080
+ENV PORT=8080
 ENV NODE_ENV=production
 
 CMD ["npm", "start"]

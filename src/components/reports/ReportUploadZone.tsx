@@ -5,9 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { storage, db, handleFirestoreError, OperationType } from '../../lib/firebase';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, updateDoc, doc } from 'firebase/firestore';
+import { supabase, handleSupabaseError, OperationType } from '../../lib/supabase';
 import { Upload, File, X, BrainCircuit, FileType, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -58,17 +56,25 @@ export default function ReportUploadZone({ patient, onComplete }: ReportUploadZo
 
     setStatus('uploading');
     try {
-      // 1. Upload files to Firebase Storage
+      // 1. Upload files to Supabase Storage
       const uploadResults: { right: EyeFile[], left: EyeFile[] } = { right: [], left: [] };
 
       const uploadEyeFiles = async (files: File[], eye: 'right' | 'left') => {
         const results: EyeFile[] = [];
         for (const file of files) {
-          const fileRef = ref(storage, `exams/${patient.id}/${Date.now()}_${eye}_${file.name}`);
-          await uploadBytes(fileRef, file);
-          const url = await getDownloadURL(fileRef);
+          const filePath = `exams/${patient.id}/${Date.now()}_${eye}_${file.name}`;
+          const { data, error } = await supabase.storage
+            .from('reports')
+            .upload(filePath, file);
+
+          if (error) throw error;
+
+          const { data: { publicUrl } } = supabase.storage
+            .from('reports')
+            .getPublicUrl(filePath);
+
           results.push({
-            url,
+            url: publicUrl,
             name: file.name,
             type: file.type,
             size: file.size,
@@ -112,21 +118,28 @@ export default function ReportUploadZone({ patient, onComplete }: ReportUploadZo
       
       const { data: extractedData } = await analysisResponse.json();
 
-      // 3. Save initial report to Firestore
-      let reportRef;
+      // 3. Save initial report to Supabase
+      let reportId;
       try {
-        reportRef = await addDoc(collection(db, 'reports'), {
-          patientId: patient.id,
-          testType,
-          examDate: Date.now(),
-          rightEyeFiles: uploadResults.right,
-          leftEyeFiles: uploadResults.left,
-          extractedData,
-          whatsappStatus: 'pending',
-          createdAt: Date.now()
-        });
+        const { data: newReport, error } = await supabase
+          .from('reports')
+          .insert({
+            patientId: patient.id,
+            testType,
+            examDate: new Date().toISOString(),
+            rightEyeFiles: uploadResults.right,
+            leftEyeFiles: uploadResults.left,
+            extractedData,
+            whatsappStatus: 'pending',
+            createdAt: new Date().toISOString()
+          })
+          .select('id')
+          .single();
+
+        if (error) throw error;
+        reportId = newReport.id;
       } catch (err) {
-        handleFirestoreError(err, OperationType.CREATE, 'reports');
+        handleSupabaseError(err, OperationType.CREATE, 'reports');
         return;
       }
 
@@ -135,28 +148,45 @@ export default function ReportUploadZone({ patient, onComplete }: ReportUploadZo
       const pdfResponse = await fetch('/api/generate-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ report: { id: reportRef!.id, extractedData }, patient })
+        body: JSON.stringify({ report: { id: reportId, extractedData }, patient })
       });
       
       const { pdfBase64 } = await pdfResponse.json();
       
-      // Upload PDF to Storage
+      // Upload PDF to Supabase Storage
       let pdfUrl;
       try {
         const pdfBlob = await (await fetch(`data:application/pdf;base64,${pdfBase64}`)).blob();
-        const pdfRef = ref(storage, `reports/${patient.id}/${reportRef!.id}.pdf`);
-        await uploadBytes(pdfRef, pdfBlob);
-        pdfUrl = await getDownloadURL(pdfRef);
+        const pdfPath = `reports/${patient.id}/${reportId}.pdf`;
+        const { error: pdfUploadErr } = await supabase.storage
+          .from('reports')
+          .upload(pdfPath, pdfBlob, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (pdfUploadErr) throw pdfUploadErr;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('reports')
+          .getPublicUrl(pdfPath);
+
+        pdfUrl = publicUrl;
       } catch (err) {
         toast.error('PDF storage failed');
         throw err;
       }
 
-      // Update Firestore with PDF URL
+      // Update Report with PDF URL in Supabase
       try {
-        await updateDoc(reportRef!, { pdfUrl });
+        const { error } = await supabase
+          .from('reports')
+          .update({ pdfUrl })
+          .eq('id', reportId);
+
+        if (error) throw error;
       } catch (err) {
-        handleFirestoreError(err, OperationType.UPDATE, `reports/${reportRef!.id}`);
+        handleSupabaseError(err, OperationType.UPDATE, `reports/${reportId}`);
       }
 
       // 5. Send WhatsApp (if configured)
@@ -173,7 +203,7 @@ export default function ReportUploadZone({ patient, onComplete }: ReportUploadZo
         
         if (waResponse.ok) {
           try {
-            await updateDoc(reportRef!, { whatsappStatus: 'sent' });
+            await supabase.from('reports').update({ whatsappStatus: 'sent' }).eq('id', reportId);
           } catch (e) {
             console.error('Failed to update WHATSAPP status', e);
           }
@@ -184,7 +214,7 @@ export default function ReportUploadZone({ patient, onComplete }: ReportUploadZo
       } catch (e) {
         console.warn("Automated WhatsApp skipped", e);
         try {
-          await updateDoc(reportRef!, { whatsappStatus: 'pending' });
+          await supabase.from('reports').update({ whatsappStatus: 'pending' }).eq('id', reportId);
         } catch (updateErr) {
           console.error('Fallback status update failed', updateErr);
         }
@@ -197,7 +227,7 @@ export default function ReportUploadZone({ patient, onComplete }: ReportUploadZo
 
     } catch (error: any) {
       if (error.message && error.message.startsWith('{')) {
-        // Already handled by handleFirestoreError
+        // Already handled by handleSupabaseError
       } else {
         toast.error(error.message);
       }

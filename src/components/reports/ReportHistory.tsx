@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-import { db } from '../../lib/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
+import { supabase } from '../../lib/supabase';
 import { Patient, Report } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,19 +13,50 @@ export default function ReportHistory({ patient }: { patient: Patient }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const q = query(
-      collection(db, 'reports'), 
-      where('patientId', '==', patient.id),
-      orderBy('createdAt', 'desc')
-    );
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Report));
-      setReports(list);
-      setLoading(false);
-    });
-    
-    return () => unsubscribe();
+    let active = true;
+
+    async function fetchReports() {
+      try {
+        const { data, error } = await supabase
+          .from('reports')
+          .select('*')
+          .eq('patientId', patient.id)
+          .order('createdAt', { ascending: false });
+
+        if (error) throw error;
+        if (active) {
+          const formattedReports = (data || []).map(r => ({
+            ...r,
+            examDate: r.examDate ? new Date(r.examDate).getTime() : Date.now(),
+            createdAt: r.createdAt ? new Date(r.createdAt).getTime() : Date.now(),
+          }));
+          setReports(formattedReports as Report[]);
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Error fetching reports:', err);
+        if (active) setLoading(false);
+      }
+    }
+
+    fetchReports();
+
+    const channel = supabase
+      .channel(`reports-changes-${patient.id}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'reports', 
+        filter: `patientId=eq.${patient.id}` 
+      }, () => {
+        fetchReports();
+      })
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
   }, [patient.id]);
 
   if (loading) {
