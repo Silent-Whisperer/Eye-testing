@@ -1,0 +1,6 @@
+{
+  "name": "Vision Clinic Portal",
+  "description": "A secure portal for vision testing clinics to manage patients, analyze VR-generated eye test results using AI, and generate automated PDF reports sent via WhatsApp.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
