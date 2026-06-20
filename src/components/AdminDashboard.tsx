@@ -28,19 +28,19 @@ export default function AdminDashboard({ user, onLogout }: { user: AppUser, onLo
         <div className="flex items-center gap-6 text-[11px] font-bold uppercase tracking-widest">
           <button 
             onClick={() => setActiveTab('patients')} 
-            className={`transition-all border-b-4 py-1 hover:text-editorial-text ${activeTab === 'patients' ? 'border-editorial-text text-editorial-text' : 'border-transparent text-editorial-muted'}`}
+            className={`transition-all border-b-4 py-1 hover:text-editorial-text cursor-pointer ${activeTab === 'patients' ? 'border-editorial-text text-editorial-text' : 'border-transparent text-editorial-muted'}`}
           >
             Ledger
           </button>
           <button 
             onClick={() => setActiveTab('add-patient')} 
-            className={`transition-all border-b-4 py-1 hover:text-editorial-text ${activeTab === 'add-patient' ? 'border-editorial-text text-editorial-text' : 'border-transparent text-editorial-muted'}`}
+            className={`transition-all border-b-4 py-1 hover:text-editorial-text cursor-pointer ${activeTab === 'add-patient' ? 'border-editorial-text text-editorial-text' : 'border-transparent text-editorial-muted'}`}
           >
             Enrollment
           </button>
           <button 
             onClick={() => setActiveTab('settings')} 
-            className={`transition-all border-b-4 py-1 hover:text-editorial-text ${activeTab === 'settings' ? 'border-editorial-text text-editorial-text' : 'border-transparent text-editorial-muted'}`}
+            className={`transition-all border-b-4 py-1 hover:text-editorial-text cursor-pointer ${activeTab === 'settings' ? 'border-editorial-text text-editorial-text' : 'border-transparent text-editorial-muted'}`}
           >
             Logistics
           </button>
@@ -68,7 +68,7 @@ export default function AdminDashboard({ user, onLogout }: { user: AppUser, onLo
             )}
 
             {activeTab === 'add-patient' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-2xl">
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-2xl mx-auto">
                 <div className="mb-10 flex items-end justify-between border-b-2 border-editorial-text pb-6">
                   <div>
                     <h1 className="font-serif text-5xl tracking-tighter italic text-editorial-text">Enrollment</h1>
@@ -77,7 +77,7 @@ export default function AdminDashboard({ user, onLogout }: { user: AppUser, onLo
                   <Button 
                     variant="ghost" 
                     onClick={() => setActiveTab('patients')}
-                    className="text-[10px] uppercase font-bold tracking-widest border border-editorial-border rounded-none h-10 hover:bg-editorial-text hover:text-white"
+                    className="text-[10px] uppercase font-bold tracking-widest border border-editorial-border rounded-none h-10 hover:bg-editorial-text hover:text-white cursor-pointer"
                   >
                     <LogOut size={14} className="mr-1 rotate-180" /> View All
                   </Button>
@@ -87,7 +87,7 @@ export default function AdminDashboard({ user, onLogout }: { user: AppUser, onLo
             )}
 
             {activeTab === 'settings' && (
-              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-2xl">
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-2xl mx-auto">
                 <div className="mb-10">
                   <h1 className="font-serif text-5xl tracking-tighter mb-2 italic text-editorial-text">System</h1>
                   <p className="text-secondary-foreground text-sm uppercase tracking-widest font-bold">Clinic Configuration & Logistics</p>
@@ -101,11 +101,15 @@ export default function AdminDashboard({ user, onLogout }: { user: AppUser, onLo
                     </div>
                     <div className="flex justify-between items-center border-b border-editorial-border pb-4">
                       <span className="text-[10px] uppercase tracking-widest font-bold text-editorial-muted">Vault Persistence</span>
-                      <span className="font-mono text-xs font-bold bg-editorial-sidebar px-3 py-1 border border-editorial-border">Google Cloud Storage / Firestore</span>
+                      <span className="font-mono text-xs font-bold bg-editorial-sidebar px-3 py-1 border border-editorial-border">Supabase DB & Storage</span>
+                    </div>
+                    <div className="flex justify-between items-center border-b border-editorial-border pb-4">
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-editorial-muted">Messaging Gateway</span>
+                      <span className="font-mono text-xs font-bold bg-green-50 text-green-700 px-3 py-1 border border-green-200">WhatsApp (Twilio Production Active)</span>
                     </div>
                     <div className="flex justify-between items-center">
-                      <span className="text-[10px] uppercase tracking-widest font-bold text-editorial-muted">Messaging Gateway</span>
-                      <span className="font-mono text-xs font-bold bg-green-50 text-green-700 px-3 py-1 border border-green-200">WhatsApp Production Active</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-editorial-muted">Email Transporter</span>
+                      <span className="font-mono text-xs font-bold bg-blue-50 text-blue-700 px-3 py-1 border border-blue-200">Nodemailer SMTP (Gmail Active)</span>
                     </div>
                   </div>
                 </div>
@@ -119,8 +123,8 @@ export default function AdminDashboard({ user, onLogout }: { user: AppUser, onLo
       <footer className="px-8 py-3 bg-editorial-text text-white flex justify-between items-center text-[9px] uppercase tracking-[0.3em]">
         <div>Session Status: Operational</div>
         <div className="flex gap-6">
-          <span className="hidden sm:inline">Firebase Secure</span>
-          <span className="hidden sm:inline">AI Analyis Active</span>
+          <span className="hidden sm:inline">Supabase Secure</span>
+          <span className="hidden sm:inline">AI Analysis Active</span>
           <span>&copy; 2026 VisionClinic</span>
         </div>
       </footer>

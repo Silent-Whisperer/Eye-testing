@@ -54,6 +54,7 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
     hasFiles: boolean;
     pdfBase64?: string;
     pdfUrl?: string;
+    doctorName?: string;
   } | null>(null);
 
   const [statusMessage, setStatusMessage] = useState('');
@@ -88,6 +89,40 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
       setValue('whatsappNumber', phoneNumber);
     }
   }, [phoneNumber, sameAsPrimary, setValue]);
+
+  useEffect(() => {
+    if (!initialData) {
+      const fetchNextPatientId = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('patients')
+            .select('patientId')
+            .order('createdAt', { ascending: false })
+            .limit(1);
+          if (error) throw error;
+          if (data && data.length > 0) {
+            const lastIdStr = data[0].patientId;
+            const match = lastIdStr.match(/(\d+)/);
+            if (match) {
+              const lastNum = parseInt(match[0], 10);
+              const nextNum = lastNum + 1;
+              const length = match[0].length;
+              const paddedNum = String(nextNum).padStart(length, '0');
+              const nextIdStr = lastIdStr.replace(match[0], paddedNum);
+              setValue('patientId', nextIdStr);
+            } else {
+              setValue('patientId', `ID-00${data.length + 1}`);
+            }
+          } else {
+            setValue('patientId', 'ID-001');
+          }
+        } catch (e) {
+          setValue('patientId', 'ID-' + Math.floor(100 + Math.random() * 900));
+        }
+      };
+      fetchNextPatientId();
+    }
+  }, [initialData, setValue]);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>, side: 'right' | 'left') => {
     if (e.target.files) {
@@ -273,6 +308,7 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
         patientId: data.patientId,
         email: data.email,
         whatsappNumber: data.whatsappNumber,
+        doctorName: data.doctorName,
         hasFiles,
         pdfBase64,
         pdfUrl
@@ -527,7 +563,7 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase tracking-[0.2em] font-bold text-editorial-text" htmlFor="gender">Gender Identity</Label>
                   <Select onValueChange={(v) => setValue('gender', v as any)} defaultValue={initialData?.gender || 'male'}>
-                    <SelectTrigger className="rounded-none border-editorial-border text-[10px] font-bold uppercase">
+                    <SelectTrigger className="rounded-none border-editorial-border text-xs uppercase w-full h-9 bg-white px-3 cursor-pointer">
                       <SelectValue placeholder="GENDER" />
                     </SelectTrigger>
                     <SelectContent className="rounded-none">
@@ -581,7 +617,7 @@ export default function PatientForm({ onSuccess, onCancel, initialData }: { onSu
                 <div className="space-y-2">
                   <Label className="text-[10px] uppercase tracking-[0.2em] font-bold text-editorial-text">Intake Test Type</Label>
                   <Select value={testType} onValueChange={(v) => setTestType(v as any)}>
-                    <SelectTrigger className="rounded-none border-editorial-border text-[10px] font-bold uppercase">
+                    <SelectTrigger className="rounded-none border-editorial-border text-xs uppercase w-full h-9 bg-white px-3 cursor-pointer">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="rounded-none">

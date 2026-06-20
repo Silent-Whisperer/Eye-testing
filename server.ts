@@ -5,18 +5,29 @@ import { GoogleGenAI } from "@google/genai";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import twilio from "twilio";
 import dotenv from "dotenv";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3000;
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    throw new Error("RESEND_API_KEY is not configured in environment variables");
+  
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
+
+  if (!smtpUser || !smtpPass) {
+    throw new Error("SMTP_USER and SMTP_PASS must be configured in environment variables");
   }
-  const resend = new Resend(apiKey);
+
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      user: smtpUser,
+      pass: smtpPass,
+    },
+  });
+
 
   app.use(express.json({ limit: '50mb' }));
 
@@ -72,8 +83,8 @@ async function startServer() {
         return res.status(400).json({ error: "Patient email is required" });
       }
 
-      await resend.emails.send({
-        from: "Vision Clinic <onboarding@resend.dev>",
+      await transporter.sendMail({
+        from: `"Vision Clinic" <${smtpUser}>`,
         to: patient.email,
         subject: "Vision Clinic - Enrollment Confirmation",
         html: `
@@ -138,8 +149,8 @@ async function startServer() {
                        testType === 'contrast' ? 'Contrast Sensitivity' :
                        testType === 'field' ? 'Visual Field' : 'Diagnostic Report';
 
-      await resend.emails.send({
-        from: "Vision Clinic <onboarding@resend.dev>",
+      await transporter.sendMail({
+        from: `"Vision Clinic" <${smtpUser}>`,
         to: patient.email,
         subject: `Vision Clinic Report: ${testName}`,
         html: `
